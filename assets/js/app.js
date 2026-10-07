@@ -6,12 +6,15 @@ let db;try{db=JSON.parse(localStorage.getItem(STORE_KEY))||structuredClone(initi
 let page="dashboard", searchTerm="", editing=null, modalKind=null;
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const save=()=>localStorage.setItem(STORE_KEY,JSON.stringify(db));
+const currentUser=()=>{try{return JSON.parse(localStorage.getItem("jds_api_user_v1")||sessionStorage.getItem("jds_api_user_v1")||"null")}catch{return null}};
 const dateStr=(d=new Date())=>d.toLocaleDateString("id-ID",{day:"2-digit",month:"long",year:"numeric"});
 const shortDate=(d=new Date())=>d.toLocaleDateString("id-ID",{day:"2-digit",month:"short",year:"numeric"});
 const todayISO=()=>{let d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
 const toast=m=>{const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove("show"),2800)};
 const navNames={dashboard:"Dashboard",jurnal:"Jurnal Mengajar",absensi:"Absensi Kelas",jadwal:"Jadwal Pelajaran",perangkat:"Perangkat Ajar",guru:"Data Guru",siswa:"Data Siswa",kelas:"Data Kelas",laporan:"Laporan & Rekap",pengaturan:"Pengaturan Sekolah"};
 $("#todayLabel").textContent=dateStr();
+const user=currentUser();
+if(user){const chip=document.querySelector(".user-chip");if(chip){const av=chip.querySelector(".user-avatar"),bs=chip.querySelector("b"),sm=chip.querySelector("small");if(av)av.textContent=String(user.name||"U").split(" ").map(x=>x[0]).slice(0,2).join("").toUpperCase();if(bs)bs.textContent=user.name||user.username;if(sm)sm.textContent=user.role||"Pengguna";}}
 function setPage(p){page=p;searchTerm="";$$(".nav-item").forEach(n=>n.classList.toggle("active",n.dataset.page===p));$("#pageCrumb").textContent=navNames[p]||"Dashboard";$("#sidebar").classList.remove("open");render()}
 function heading(title,desc,action="",label="+ Tambah Data"){return `<div class="page-heading"><div><div class="eyebrow">PORTAL AKADEMIK</div><h1>${title}</h1><p>${desc}</p></div>${action?`<button class="btn btn-primary" data-action="${action}">${label}</button>`:""}</div>`}
 function stat(title,value,icon,foot){return `<article class="stat-card"><div class="stat-top"><span>${title}</span><div class="stat-icon">${icon}</div></div><div class="stat-value">${value}</div><div class="stat-foot">${foot}</div></article>`}
@@ -52,6 +55,6 @@ document.addEventListener("click",e=>{let nav=e.target.closest("[data-page]");if
 document.addEventListener("submit",handleSubmit);
 document.addEventListener("input",e=>{if(e.target.id==="searchInput"){let pos=e.target.selectionStart;searchTerm=e.target.value;render();let n=$("#searchInput");n?.focus();n?.setSelectionRange(pos,pos)}});
 $("#modalClose").addEventListener("click",closeModal);$("#modalCancel").addEventListener("click",closeModal);$("#modalBackdrop").addEventListener("click",e=>{if(e.target.id==="modalBackdrop")closeModal()});
-$("#menuToggle").addEventListener("click",()=>$("#sidebar").classList.add("open"));$("#closeSidebar").addEventListener("click",()=>$("#sidebar").classList.remove("open"));$("#profileBtn").addEventListener("click",()=>toast("Akun demo: Administrator"));
+$("#menuToggle").addEventListener("click",()=>$("#sidebar").classList.add("open"));$("#closeSidebar").addEventListener("click",()=>$("#sidebar").classList.remove("open"));$("#profileBtn").addEventListener("click",()=>{const u=currentUser();if(u&&window.JDS_AUTH){if(confirm("Keluar dari akun "+(u.name||u.username)+"?"))window.JDS_AUTH.logout();}else toast("Akun demo: Administrator")});
 render();
 })();
