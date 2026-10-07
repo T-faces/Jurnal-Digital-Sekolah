@@ -1,0 +1,15 @@
+{
+  "name":"Jurnal Digital Sekolah",
+  "short_name":"Jurnal Digital",
+  "description":"Portal administrasi pembelajaran, jurnal guru, absensi, jadwal dan laporan sekolah.",
+  "lang":"id-ID",
+  "start_url":"./",
+  "scope":"./",
+  "display":"standalone",
+  "background_color":"#f5f7fb",
+  "theme_color":"#123c78",
+  "orientation":"portrait-primary",
+  "icons":[
+    {"src":"assets/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
