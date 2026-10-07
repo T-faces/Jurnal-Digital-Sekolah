@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#123c78"><meta name="description" content="Jurnal Digital Sekolah - platform administrasi pembelajaran, jurnal guru, absensi dan laporan sekolah.">
+<title>Jurnal Digital Sekolah</title><link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="brand-mark">JD</div><div><b>Jurnal Digital</b><small>PORTAL SEKOLAH</small></div><button class="icon-btn close-sidebar" id="closeSidebar" aria-label="Tutup menu">×</button></div>
+    <div class="school-mini"><div class="school-avatar">🏫</div><div><b>MIN 1 Tanggamus</b><small>Tahun Pelajaran 2026/2027</small></div></div>
+    <div class="nav-label">MENU UTAMA</div>
+    <nav id="mainNav">
+      <button class="nav-item active" data-page="dashboard"><span>▦</span> Dashboard</button>
+      <button class="nav-item" data-page="jurnal"><span>▤</span> Jurnal Mengajar <em id="journalCount">0</em></button>
+      <button class="nav-item" data-page="absensi"><span>✓</span> Absensi Kelas</button>
+      <button class="nav-item" data-page="jadwal"><span>▦</span> Jadwal Pelajaran</button>
+      <button class="nav-item" data-page="perangkat"><span>▧</span> Perangkat Ajar</button>
+      <div class="nav-label">DATA AKADEMIK</div>
+      <button class="nav-item" data-page="guru"><span>♙</span> Data Guru</button>
+      <button class="nav-item" data-page="siswa"><span>♧</span> Data Siswa</button>
+      <button class="nav-item" data-page="kelas"><span>▣</span> Data Kelas</button>
+      <button class="nav-item" data-page="laporan"><span>▥</span> Laporan & Rekap</button>
+      <div class="nav-label">PENGATURAN</div>
+      <button class="nav-item" data-page="pengaturan"><span>⚙</span> Pengaturan Sekolah</button>
+    </nav>
+    <div class="sidebar-bottom"><div class="help-icon">?</div><div><b>Butuh bantuan?</b><small>Hubungi administrator sekolah</small></div></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><button class="icon-btn menu-toggle" id="menuToggle" aria-label="Buka menu">☰</button><div class="crumb"><span>Portal Sekolah</span><b>/</b><strong id="pageCrumb">Dashboard</strong></div><div class="top-actions"><span class="today" id="todayLabel"></span><button class="icon-btn notification" title="Notifikasi">♧<i></i></button><div class="user-chip"><div class="user-avatar">AA</div><div><b>Ari Agung Satria</b><small>Administrator</small></div><button class="chevron" id="profileBtn">⌄</button></div></div></header>
+    <div class="content" id="content"></div>
+    <footer>© 2026 Jurnal Digital Sekolah <span>Dirancang untuk mendukung pembelajaran yang lebih tertib dan terukur.</span></footer>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<div class="modal-backdrop" id="modalBackdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><div><small>FORMULIR DATA</small><h2 id="modalTitle">Tambah Data</h2></div><button class="icon-btn" id="modalClose" aria-label="Tutup">×</button></div><form id="modalForm"><div id="modalFields" class="form-grid"></div><div class="modal-actions"><button type="button" class="btn btn-light" id="modalCancel">Batal</button><button type="submit" class="btn btn-primary">Simpan Data</button></div></form></section></div>
+<script src="assets/js/app.js"></script>
+</body></html>
