@@ -14,7 +14,7 @@
  */
 
 const CONFIG = {
-  SPREADSHEET_ID: 'PASTE_SPREADSHEET_ID_HERE',
+  SPREADSHEET_ID: '12SfYIYrzggSYSg3lRaiRa5PbMqhFyul9o7kFokj_yOI',
   SESSION_SECONDS: 21600,
   APP_NAME: 'Jurnal Digital Sekolah'
 };
