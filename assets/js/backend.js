@@ -1,7 +1,7 @@
 (()=>{
 "use strict";
 window.JDS_BACKEND={
-  API_URL:"https://script.google.com/macros/s/AKfycbzKXc2quIDPSAmDTKDfK_zT870hVC9OIhwxk2mVo4mHRrMg92EqtrLqMcp-AtEzHlcvpQ/exec",
+  API_URL:"https://script.google.com/macros/s/AKfycbzxyaNd5Sj84BJc8MvLdp7jVGGUARu3zTu6KawN0e66vNTX_lELQHcFFdWDC_w1sEtjsg/exec",
   TOKEN_KEY:"jds_api_token_v1",
   USER_KEY:"jds_api_user_v1"
 };
