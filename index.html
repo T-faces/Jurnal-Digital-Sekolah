@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#123c78"><meta name="description" content="Jurnal Digital Sekolah - platform administrasi pembelajaran, jurnal guru, absensi dan laporan sekolah.">
-<title>Jurnal Digital Sekolah</title><link rel="stylesheet" href="assets/css/style.css">
+<title>Jurnal Digital Sekolah</title><link rel="stylesheet" href="assets/css/style.css"><link rel="manifest" href="assets/manifest.webmanifest"><link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 </head>
 <body>
 <div class="app-shell">
@@ -36,4 +36,4 @@
 <div class="toast" id="toast" role="status"></div>
 <div class="modal-backdrop" id="modalBackdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><div><small>FORMULIR DATA</small><h2 id="modalTitle">Tambah Data</h2></div><button class="icon-btn" id="modalClose" aria-label="Tutup">×</button></div><form id="modalForm"><div id="modalFields" class="form-grid"></div><div class="modal-actions"><button type="button" class="btn btn-light" id="modalCancel">Batal</button><button type="submit" class="btn btn-primary">Simpan Data</button></div></form></section></div>
 <script src="assets/js/app.js"></script>
-</body></html>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}</script>\n</body></html>
