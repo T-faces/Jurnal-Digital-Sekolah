@@ -69,6 +69,25 @@ function handleAction_(p) {
   throw new Error('Aksi tidak dikenal: ' + action);
 }
 
+function generateJournalAI_(token, context) {
+  const session=requireSession_(token);
+  if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(session.role)) throw new Error('Akses ditolak.');
+  const key=PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) throw new Error('GEMINI_API_KEY belum dikonfigurasi di Script Properties Apps Script.');
+  const model=PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || 'gemini-2.5-flash';
+  const prompt='Anda adalah asisten guru Indonesia. Buat isi jurnal mengajar yang praktis, formal, singkat, sesuai Kurikulum Merdeka/Deep Learning bila relevan. Data: '+JSON.stringify(context)+'\nKembalikan HANYA JSON valid dengan tiga properti: objective, activities, reflection. objective berisi 1-3 tujuan pembelajaran terukur. activities berisi langkah pendahuluan, inti, penutup dalam paragraf ringkas. reflection berisi hasil/refleksi dan tindak lanjut. Jangan gunakan markdown.';
+  const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(key);
+  const payload={contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.35,responseMimeType:'application/json'}};
+  const res=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',payload:JSON.stringify(payload),muteHttpExceptions:true});
+  const code=res.getResponseCode(), body=res.getContentText();
+  if(code<200 || code>=300) throw new Error('AI gagal ('+code+'). Periksa GEMINI_API_KEY/GEMINI_MODEL.');
+  let parsed; try { parsed=JSON.parse(body); } catch(e){ throw new Error('Respons AI tidak valid.'); }
+  const text=parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts && parsed.candidates[0].content.parts[0] && parsed.candidates[0].content.parts[0].text;
+  if(!text) throw new Error('AI tidak menghasilkan konten.');
+  let result; try { result=JSON.parse(text); } catch(e){ throw new Error('Format hasil AI tidak valid.'); }
+  audit_(session.username,'AI_GENERATE','Journals','', 'Generate tujuan, kegiatan, refleksi');
+  return {ok:true,result:{objective:String(result.objective||''),activities:String(result.activities||''),reflection:String(result.reflection||'')}};
+}
 function setupDatabase() {
   if (CONFIG.SPREADSHEET_ID === 'PASTE_SPREADSHEET_ID_HERE') {
     throw new Error('Isi CONFIG.SPREADSHEET_ID terlebih dahulu.');
