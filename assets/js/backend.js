@@ -13,12 +13,32 @@ const hash=async value=>{
   const digest=await crypto.subtle.digest("SHA-256",bytes);
   return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("");
 };
+const getToken=()=>localStorage.getItem(cfg.TOKEN_KEY)||sessionStorage.getItem(cfg.TOKEN_KEY)||"";
+const setSession=(token,user)=>{
+  localStorage.setItem(cfg.TOKEN_KEY,token);
+  localStorage.setItem(cfg.USER_KEY,JSON.stringify(user));
+  sessionStorage.setItem(cfg.TOKEN_KEY,token);
+  sessionStorage.setItem(cfg.USER_KEY,JSON.stringify(user));
+};
+const clearSession=()=>{
+  localStorage.removeItem(cfg.TOKEN_KEY);localStorage.removeItem(cfg.USER_KEY);
+  sessionStorage.removeItem(cfg.TOKEN_KEY);sessionStorage.removeItem(cfg.USER_KEY);
+};
 const call=async payload=>{
   if(!configured()) throw new Error("Backend belum dikonfigurasi.");
-  const r=await fetch(cfg.API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify(payload),redirect:"follow"});
-  const data=await r.json();
-  if(!data.ok) throw new Error(data.error||"Permintaan gagal.");
-  return data;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),20000);
+  try{
+    const r=await fetch(cfg.API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:JSON.stringify(payload),redirect:"follow",cache:"no-store",signal:controller.signal});
+    const text=await r.text();
+    let data;
+    try{data=JSON.parse(text)}catch(_){throw new Error("Respons backend tidak valid. Pastikan Web App Apps Script aktif dan aksesnya 'Anyone'.")}
+    if(!r.ok||!data.ok) throw new Error(data.error||("HTTP "+r.status));
+    return data;
+  }catch(err){
+    if(err.name==="AbortError") throw new Error("Backend tidak merespons dalam 20 detik.");
+    throw err;
+  }finally{clearTimeout(timer)}
 };
 const overlay=()=>{
   if(document.getElementById("jdsLogin")) return;
@@ -27,46 +47,48 @@ const overlay=()=>{
   el.innerHTML=`<div class="jds-login-card"><div class="jds-login-logo">JD</div><h1>Jurnal Digital Sekolah</h1><p>Login untuk mengakses data sekolah.</p><form id="jdsLoginForm"><label>Username<input name="username" autocomplete="username" required value="admin"></label><label>Password<input name="password" type="password" autocomplete="current-password" required placeholder="Masukkan password"></label><button type="submit">Masuk ke Aplikasi</button><small id="jdsLoginMsg"></small></form></div>`;
   document.body.appendChild(el);
   $("#jdsLoginForm").addEventListener("submit",async e=>{
-    e.preventDefault();const f=new FormData(e.target),msg=$("#jdsLoginMsg");
-    msg.textContent="Memverifikasi...";
+    e.preventDefault();const f=new FormData(e.target),msg=$("#jdsLoginMsg"),btn=e.target.querySelector("button");
+    msg.textContent="Memverifikasi...";btn.disabled=true;
     try{
-      const d=await call({action:"login",username:f.get("username"),passwordHash:await hash(f.get("password"))});
-      sessionStorage.setItem(cfg.TOKEN_KEY,d.token);sessionStorage.setItem(cfg.USER_KEY,JSON.stringify(d.user));
+      const d=await call({action:"login",username:String(f.get("username")||""),passwordHash:await hash(String(f.get("password")||""))});
+      setSession(d.token,d.user);
       const boot=await call({action:"bootstrap",token:d.token});
       localStorage.setItem("jds_demo_v1",JSON.stringify(boot.data));
       location.reload();
-    }catch(err){msg.textContent=err.message||"Login gagal."}
+    }catch(err){msg.textContent=err.message||"Login gagal.";btn.disabled=false}
   });
 };
 const hydrate=async()=>{
-  const token=sessionStorage.getItem(cfg.TOKEN_KEY);
+  const token=getToken();
   if(!token){overlay();return false}
   try{
     const d=await call({action:"bootstrap",token});
+    setSession(token,d.user);
     localStorage.setItem("jds_demo_v1",JSON.stringify(d.data));
+    window.dispatchEvent(new CustomEvent("jds:ready",{detail:d.user}));
     return true;
-  }catch(_){sessionStorage.removeItem(cfg.TOKEN_KEY);sessionStorage.removeItem(cfg.USER_KEY);overlay();return false}
+  }catch(err){
+    clearSession();
+    overlay();
+    const msg=$("#jdsLoginMsg");if(msg)msg.textContent=err.message||"Sesi tidak valid. Silakan login kembali.";
+    return false;
+  }
 };
 if(configured()){
-  const originalSet=localStorage.setItem.bind(localStorage);
-  let hydrating=false,syncTimer=0;
-  window.addEventListener("jds:logout",()=>{sessionStorage.removeItem(cfg.TOKEN_KEY);sessionStorage.removeItem(cfg.USER_KEY);location.reload()});
-  const sync=async raw=>{
-    if(hydrating||!sessionStorage.getItem(cfg.TOKEN_KEY))return;
-    clearTimeout(syncTimer);
-    syncTimer=setTimeout(async()=>{
-      try{await call({action:"saveAll",token:sessionStorage.getItem(cfg.TOKEN_KEY),data:JSON.parse(raw)})}
-      catch(e){console.warn("Sinkronisasi backend:",e.message)}
-    },500);
+  let hydrating=true,syncTimer=0;
+  window.JDS_AUTH={logout:async()=>{const token=getToken();try{if(token)await call({action:"logout",token})}catch(_){}clearSession();window.dispatchEvent(new Event("jds:logout"));location.reload()}};
+  window.addEventListener("jds:logout",()=>clearSession());
+  const originalSet=Storage.prototype.setItem;
+  const originalRemove=Storage.prototype.removeItem;
+  Storage.prototype.setItem=function(key,value){
+    originalSet.call(this,key,value);
+    if(this===localStorage&&key==="jds_demo_v1"&&!hydrating&&getToken()){
+      clearTimeout(syncTimer);
+      syncTimer=setTimeout(async()=>{try{await call({action:"saveAll",token:getToken(),data:JSON.parse(value)})}catch(e){console.warn("Sinkronisasi backend:",e.message)}},500);
+    }
   };
-  localStorage.setItem=(key,value)=>{
-    originalSet(key,value);
-    if(key==="jds_demo_v1")sync(value);
-  };
-  document.addEventListener("DOMContentLoaded",async()=>{hydrating=true;await hydrate();hydrating=false;});
+  document.addEventListener("DOMContentLoaded",async()=>{await hydrate();hydrating=false});
 }else{
-  document.addEventListener("DOMContentLoaded",()=>{
-    const n=document.createElement("div");n.className="jds-demo-badge";n.textContent="MODE DEMO • Backend belum dikonfigurasi";document.body.appendChild(n);
-  });
+  document.addEventListener("DOMContentLoaded",()=>{const n=document.createElement("div");n.className="jds-demo-badge";n.textContent="MODE DEMO • Backend belum dikonfigurasi";document.body.appendChild(n)});
 }
 })();
