@@ -65,6 +65,7 @@ function handleAction_(p) {
   if (action === 'bootstrap') return bootstrap_(String(p.token||''));
   if (action === 'saveAll') return saveAll_(String(p.token||''), p.data);
   if (action === 'changePassword') return changePassword_(String(p.token||''),String(p.currentHash||''),String(p.newHash||''));
+  if (action === 'generateJournalAI') return generateJournalAI_(String(p.token||''), p.context || {});
   if (action === 'health') return health_();
   throw new Error('Aksi tidak dikenal: ' + action);
 }
@@ -75,7 +76,7 @@ function generateJournalAI_(token, context) {
   const key=PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) throw new Error('GEMINI_API_KEY belum dikonfigurasi di Script Properties Apps Script.');
   const model=PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || 'gemini-2.5-flash';
-  const prompt='Anda adalah asisten guru Indonesia. Buat isi jurnal mengajar yang praktis, formal, singkat, sesuai Kurikulum Merdeka/Deep Learning bila relevan. Data: '+JSON.stringify(context)+'\nKembalikan HANYA JSON valid dengan tiga properti: objective, activities, reflection. objective berisi 1-3 tujuan pembelajaran terukur. activities berisi langkah pendahuluan, inti, penutup dalam paragraf ringkas. reflection berisi hasil/refleksi dan tindak lanjut. Jangan gunakan markdown.';
+  const prompt='Anda adalah asisten guru Indonesia. Buat isi jurnal mengajar yang praktis, formal, singkat, sesuai Kurikulum Merdeka/Deep Learning bila relevan. Data: '+JSON.stringify(context)+'\\nKembalikan HANYA JSON valid dengan tiga properti: objective, activities, reflection. objective berisi 1-3 tujuan pembelajaran terukur. activities berisi langkah pendahuluan, inti, penutup dalam paragraf ringkas. reflection berisi hasil/refleksi dan tindak lanjut. Jangan gunakan markdown.';
   const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(key);
   const payload={contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.35,responseMimeType:'application/json'}};
   const res=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',payload:JSON.stringify(payload),muteHttpExceptions:true});
