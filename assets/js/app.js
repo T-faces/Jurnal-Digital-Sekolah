@@ -64,8 +64,70 @@ function closeModal(){$("#modalBackdrop").classList.remove("show");editing=null;
 function nextId(arr){return Math.max(0,...arr.map(x=>Number(x.id)||0))+1}
 function exportCSV(collection){let arr=db[collection]||[];if(!arr.length){toast("Belum ada data untuk diekspor.");return}let keys=[...new Set(arr.flatMap(o=>Object.keys(o)))];let csv=[keys.join(","),...arr.map(o=>keys.map(k=>`"${String(o[k]??"").replace(/"/g,'""')}"`).join(","))].join("\r\n");let blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8;"});let a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`${collection}-${todayISO()}.csv`;a.click();URL.revokeObjectURL(a.href);toast("File CSV berhasil disiapkan.")}
 function downloadJSON(){let b=new Blob([JSON.stringify(db,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=`cadangan-jurnal-sekolah-${todayISO()}.json`;a.click();URL.revokeObjectURL(a.href);toast("Cadangan data berhasil disiapkan.")}
-function handleSubmit(e){if(e.target.id==="settingsForm"){e.preventDefault();let d=new FormData(e.target);db.school=Object.fromEntries(d.entries());save();toast("Pengaturan sekolah disimpan.");render();return}if(e.target.id!=="modalForm")return;e.preventDefault();let cfg=configs[modalKind];if(!cfg)return;let obj=Object.fromEntries(new FormData(e.target).entries());for(let f of cfg.fields){if(f[2]==="number")obj[f[0]]=Number(obj[f[0]]||0)}let arr=db[cfg.collection];if(editing){Object.assign(arr.find(x=>x.id===editing.id),obj)}else{obj.id=nextId(arr);if(cfg.collection==="journals")obj.created=new Date().toISOString();arr.push(obj)}save();closeModal();render();toast(editing?"Perubahan berhasil disimpan.":"Data berhasil ditambahkan.")}
-document.addEventListener("click",e=>{let nav=e.target.closest("[data-page]");if(nav){setPage(nav.dataset.page);return}let act=e.target.closest("[data-action]")?.dataset.action;if(act){if(act==="add-journal")openModal(act);else if(configs[act])openModal(act);else if(act==="export")exportCSV(({jurnal:"journals",absensi:"attendance",guru:"teachers",siswa:"students",kelas:"classes",perangkat:"plans"})[page]||"journals");else if(act==="backup")downloadJSON();else if(act==="reset"){if(confirm("Reset seluruh data demo ke data awal? Perubahan lokal akan hilang.")){db=structuredClone(initial);save();render();toast("Data demo telah direset.")}}return}let ex=e.target.closest("[data-export]");if(ex){exportCSV(ex.dataset.export);return}let edit=e.target.closest("[data-edit]");if(edit){let cfgKey=Object.keys(configs).find(k=>configs[k].collection===edit.dataset.edit);if(cfgKey)openModal(cfgKey,db[edit.dataset.edit].find(x=>String(x.id)===edit.dataset.id));return}let del=e.target.closest("[data-delete]");if(del){if(confirm("Hapus data ini? Tindakan ini tidak dapat dibatalkan.")){let arr=db[del.dataset.delete];if(del.dataset.delete==="schedules")arr.splice(Number(del.dataset.id),1);else db[del.dataset.delete]=arr.filter(x=>String(x.id)!==del.dataset.id);save();render();toast("Data berhasil dihapus.")}return}});
+async function handleSubmit(e){
+  if(e.target.id==="settingsForm"){
+    e.preventDefault();
+    let d=new FormData(e.target);
+    db.school=Object.fromEntries(d.entries());
+    save();toast("Pengaturan sekolah disimpan.");render();return;
+  }
+  if(e.target.id!=="modalForm")return;
+  e.preventDefault();
+  let cfg=configs[modalKind];if(!cfg)return;
+  let obj=Object.fromEntries(new FormData(e.target).entries());
+  for(let f of cfg.fields){if(f[2]==="number")obj[f[0]]=Number(obj[f[0]]||0)}
+
+  if(cfg.collection==="journals" && window.JDS_AUTH){
+    const isEdit=!!editing;
+    const btn=e.target.querySelector('button[type="submit"]');
+    if(btn){btn.disabled=true;btn.textContent=isEdit?"Menyimpan...":"Menyimpan...";}
+    try{
+      let result;
+      if(isEdit) result=await window.JDS_AUTH.updateJournal(editing.id,obj);
+      else {obj.created=new Date().toISOString();result=await window.JDS_AUTH.createJournal(obj);}
+      const savedJournal=result.data;
+      if(isEdit){
+        const idx=db.journals.findIndex(x=>String(x.id)===String(editing.id));
+        if(idx>=0) db.journals[idx]=savedJournal; else db.journals.unshift(savedJournal);
+      }else{
+        db.journals.unshift(savedJournal);
+      }
+      save();closeModal();render();
+      toast(isEdit?"Jurnal berhasil diperbarui dan disinkronkan.":"Jurnal berhasil disimpan ke Google Sheets.");
+    }catch(err){
+      toast(err.message||"Gagal menyimpan jurnal.");
+      if(btn){btn.disabled=false;btn.textContent="Simpan Jurnal";}
+    }
+    return;
+  }
+
+  let arr=db[cfg.collection];
+  if(editing){Object.assign(arr.find(x=>x.id===editing.id),obj)}
+  else{obj.id=nextId(arr);if(cfg.collection==="journals")obj.created=new Date().toISOString();arr.push(obj)}
+  save();closeModal();render();toast(editing?"Perubahan berhasil disimpan.":"Data berhasil ditambahkan.");
+}
+document.addEventListener("click",e=>{let nav=e.target.closest("[data-page]");if(nav){setPage(nav.dataset.page);return}let act=e.target.closest("[data-action]")?.dataset.action;if(act){if(act==="add-journal")openModal(act);else if(configs[act])openModal(act);else if(act==="export")exportCSV(({jurnal:"journals",absensi:"attendance",guru:"teachers",siswa:"students",kelas:"classes",perangkat:"plans"})[page]||"journals");else if(act==="backup")downloadJSON();else if(act==="reset"){if(confirm("Reset seluruh data demo ke data awal? Perubahan lokal akan hilang.")){db=structuredClone(initial);save();render();toast("Data demo telah direset.")}}return}let ex=e.target.closest("[data-export]");if(ex){exportCSV(ex.dataset.export);return}let edit=e.target.closest("[data-edit]");if(edit){let cfgKey=Object.keys(configs).find(k=>configs[k].collection===edit.dataset.edit);if(cfgKey)openModal(cfgKey,db[edit.dataset.edit].find(x=>String(x.id)===edit.dataset.id));return}let del=e.target.closest("[data-delete]");if(del){
+  if(confirm("Hapus data ini? Tindakan ini tidak dapat dibatalkan.")){
+    const collection=del.dataset.delete,id=del.dataset.id;
+    if(collection==="journals" && window.JDS_AUTH){
+      const btn=del;
+      btn.disabled=true;btn.textContent="Menghapus...";
+      window.JDS_AUTH.deleteJournal(id).then(()=>{
+        db.journals=db.journals.filter(x=>String(x.id)!==String(id));
+        save();render();toast("Jurnal berhasil dihapus dari Google Sheets.");
+      }).catch(err=>{
+        btn.disabled=false;btn.textContent="Hapus";
+        toast(err.message||"Gagal menghapus jurnal.");
+      });
+    }else{
+      let arr=db[collection];
+      if(collection==="schedules")arr.splice(Number(id),1);
+      else db[collection]=arr.filter(x=>String(x.id)!==String(id));
+      save();render();toast("Data berhasil dihapus.");
+    }
+  }
+  return;
+}});
 document.addEventListener("submit",handleSubmit);
 document.addEventListener("input",e=>{if(e.target.id==="searchInput"){let pos=e.target.selectionStart;searchTerm=e.target.value;render();let n=$("#searchInput");n?.focus();n?.setSelectionRange(pos,pos)}});
 $("#modalClose").addEventListener("click",closeModal);$("#modalCancel").addEventListener("click",closeModal);$("#modalBackdrop").addEventListener("click",e=>{if(e.target.id==="modalBackdrop")closeModal()});
