@@ -114,6 +114,12 @@ function normalizeGeminiModel_(model) {
 }
 
 function listGeminiModels_(key) {
+  const cache=CacheService.getScriptCache();
+  const cached=cache.get('gemini_models');
+  if (cached) {
+    try { return JSON.parse(cached); } catch (_) {}
+  }
+
   const res=UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models',{
     method:'get',
     headers:{'x-goog-api-key':key},
@@ -127,45 +133,75 @@ function listGeminiModels_(key) {
   }
   let data;
   try { data=JSON.parse(body); } catch (_) { throw new Error('Respons daftar model Gemini tidak valid.'); }
-  return (data.models||[])
+  const models=(data.models||[])
     .filter(m=>Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.indexOf('generateContent')>=0)
     .map(m=>normalizeGeminiModel_(m.name))
     .filter(Boolean);
+  cache.put('gemini_models',JSON.stringify(models),600);
+  return models;
 }
 
 function callGeminiGenerate_(key,model,prompt) {
   const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent';
   const headers={'x-goog-api-key':key};
-  const payload={contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.35,responseMimeType:'application/json'}};
+  const basePayload={contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.35,responseMimeType:'application/json'}};
+  const fallbackPayload={contents:basePayload.contents,generationConfig:{temperature:0.35}};
+  const maxRetries=2;
 
-  let res=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',headers:headers,payload:JSON.stringify(payload),muteHttpExceptions:true});
-  let code=res.getResponseCode(), body=res.getContentText();
+  for (let attempt=0; attempt<=maxRetries; attempt++) {
+    let res=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',headers:headers,payload:JSON.stringify(attempt===0?basePayload:fallbackPayload),muteHttpExceptions:true});
+    let code=res.getResponseCode(), body=res.getContentText();
 
-  if (code===400) {
-    const retryPayload={contents:payload.contents,generationConfig:{temperature:0.35}};
-    res=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',headers:headers,payload:JSON.stringify(retryPayload),muteHttpExceptions:true});
-    code=res.getResponseCode();
-    body=res.getContentText();
-  }
+    if (code===400 && attempt===0) {
+      res=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',headers:headers,payload:JSON.stringify(fallbackPayload),muteHttpExceptions:true});
+      code=res.getResponseCode();
+      body=res.getContentText();
+    }
 
-  if(code<200 || code>=300) {
-    let detail=body;
-    try { const e=JSON.parse(body); detail=e.error && e.error.message ? e.error.message : body; } catch (_) {}
+    if(code>=200 && code<300) {
+      let parsed;
+      try { parsed=JSON.parse(body); } catch(e){ return {ok:false,code:500,error:'Respons AI tidak valid.'}; }
+      const text=parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts && parsed.candidates[0].content.parts[0] && parsed.candidates[0].content.parts[0].text;
+      if(!text) return {ok:false,code:500,error:'AI tidak menghasilkan konten.'};
+
+      let data;
+      try { data=JSON.parse(text); } catch(e) {
+        const match=String(text).match(/\\{[\\s\\S]*\\}/);
+        if (!match) return {ok:false,code:500,error:'Format hasil AI tidak valid.'};
+        try { data=JSON.parse(match[0]); } catch (_) { return {ok:false,code:500,error:'Format hasil AI tidak valid.'}; }
+      }
+      return {ok:true,data:data};
+    }
+
+    let errorCode='', detail=body;
+    try {
+      const parsedError=JSON.parse(body);
+      errorCode=String(parsedError.error && (parsedError.error.status || parsedError.error.code || parsedError.error.message) || '').toLowerCase();
+      detail=parsedError.error && parsedError.error.message ? parsedError.error.message : body;
+    } catch (_) {}
+
+    const detailText=errorCode+' '+detail;
+    const dailyQuota=/quota_exceeded|daily quota|quota.*day/i.test(detailText);
+
+    if (code===429 && dailyQuota) {
+      return {ok:false,code:429,error:'Kuota harian Gemini API sedang habis. Tunggu sampai kuota reset atau tingkatkan kuota project.'};
+    }
+
+    const retryable=code===429 || code===408 || (code>=500 && code<=599);
+    if (retryable && attempt<maxRetries) {
+      const delayMs=Math.min(8000,2000*Math.pow(2,attempt))+Math.floor(Math.random()*500);
+      Utilities.sleep(delayMs);
+      continue;
+    }
+
+    if (code===429) {
+      return {ok:false,code:429,error:'Gemini sedang membatasi permintaan (429). Sistem sudah mencoba ulang otomatis. Silakan tunggu sebentar lalu coba lagi.'};
+    }
+
     return {ok:false,code:code,error:'AI gagal ('+code+') pada model "'+model+'": '+String(detail).slice(0,400)};
   }
 
-  let parsed;
-  try { parsed=JSON.parse(body); } catch(e){ return {ok:false,code:500,error:'Respons AI tidak valid.'}; }
-  const text=parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts && parsed.candidates[0].content.parts[0] && parsed.candidates[0].content.parts[0].text;
-  if(!text) return {ok:false,code:500,error:'AI tidak menghasilkan konten.'};
-
-  let data;
-  try { data=JSON.parse(text); } catch(e) {
-    const match=String(text).match(/\\{[\\s\\S]*\\}/);
-    if (!match) return {ok:false,code:500,error:'Format hasil AI tidak valid.'};
-    try { data=JSON.parse(match[0]); } catch (_) { return {ok:false,code:500,error:'Format hasil AI tidak valid.'}; }
-  }
-  return {ok:true,data:data};
+  return {ok:false,code:500,error:'AI gagal setelah percobaan ulang.'};
 }
 
 function journalPayload_(data) {
