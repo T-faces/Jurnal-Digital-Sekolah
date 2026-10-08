@@ -66,6 +66,10 @@ function handleAction_(p) {
   if (action === 'saveAll') return saveAll_(String(p.token||''), p.data);
   if (action === 'changePassword') return changePassword_(String(p.token||''),String(p.currentHash||''),String(p.newHash||''));
   if (action === 'generateJournalAI') return generateJournalAI_(String(p.token||''), p.context || {});
+  if (action === 'listJournals') return listJournals_(String(p.token||''));
+  if (action === 'createJournal') return createJournal_(String(p.token||''), p.data || {});
+  if (action === 'updateJournal') return updateJournal_(String(p.token||''), String(p.id||''), p.data || {});
+  if (action === 'deleteJournal') return deleteJournal_(String(p.token||''), String(p.id||''));
   if (action === 'health') return health_();
   throw new Error('Aksi tidak dikenal: ' + action);
 }
@@ -164,6 +168,82 @@ function callGeminiGenerate_(key,model,prompt) {
   return {ok:true,data:data};
 }
 
+function journalPayload_(data) {
+  const allowed=['date','teacher','className','subject','hours','topic','objective','activities','reflection','created'];
+  const out={};
+  allowed.forEach(k=>{ if (data && data[k] != null) out[k]=data[k]; });
+  return out;
+}
+
+function listJournals_(token) {
+  requireSession_(token);
+  return {ok:true,data:readSheetObjects_('Journals')};
+}
+
+function createJournal_(token, rawData) {
+  const session=requireSession_(token);
+  if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(session.role)) throw new Error('Akses ditolak.');
+  const data=journalPayload_(rawData);
+  if (!data.date || !data.teacher || !data.className || !data.subject || !data.topic) {
+    throw new Error('Tanggal, guru, kelas, mata pelajaran, dan materi wajib diisi.');
+  }
+  const id=Utilities.getUuid();
+  const now=new Date();
+  const row=SHEETS.Journals.map(h=>{
+    if (h==='id') return id;
+    if (h==='created') return data.created || now.toISOString();
+    if (h==='updatedAt') return now;
+    return data[h] == null ? '' : data[h];
+  });
+  sheet_('Journals').appendRow(row);
+  audit_(session.username,'CREATE','Journals',id,'Membuat jurnal mengajar');
+  return {ok:true,data:journalById_(id)};
+}
+
+function updateJournal_(token,id,rawData) {
+  const session=requireSession_(token);
+  if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(session.role)) throw new Error('Akses ditolak.');
+  if (!id) throw new Error('ID jurnal tidak ditemukan.');
+  const sh=sheet_('Journals');
+  const values=sh.getDataRange().getValues();
+  if (values.length<2) throw new Error('Jurnal tidak ditemukan.');
+  const headers=values[0], idx=headers.indexOf('id');
+  let rowNumber=-1;
+  for (let i=1;i<values.length;i++) if (String(values[i][idx])===String(id)) { rowNumber=i+1; break; }
+  if (rowNumber<0) throw new Error('Jurnal tidak ditemukan.');
+  const old={}; headers.forEach((h,i)=>old[h]=values[rowNumber-1][i]);
+  const data=journalPayload_(rawData);
+  const row=headers.map(h=>{
+    if (h==='id') return old.id;
+    if (h==='updatedAt') return new Date();
+    if (Object.prototype.hasOwnProperty.call(data,h)) return data[h];
+    return old[h];
+  });
+  sh.getRange(rowNumber,1,1,headers.length).setValues([row]);
+  audit_(session.username,'UPDATE','Journals',id,'Memperbarui jurnal mengajar');
+  return {ok:true,data:journalById_(id)};
+}
+
+function deleteJournal_(token,id) {
+  const session=requireSession_(token);
+  if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(session.role)) throw new Error('Akses ditolak.');
+  if (!id) throw new Error('ID jurnal tidak ditemukan.');
+  const sh=sheet_('Journals'), values=sh.getDataRange().getValues(), idx=values[0].indexOf('id');
+  let rowNumber=-1;
+  for (let i=1;i<values.length;i++) if (String(values[i][idx])===String(id)) { rowNumber=i+1; break; }
+  if (rowNumber<0) throw new Error('Jurnal tidak ditemukan.');
+  sh.deleteRow(rowNumber);
+  audit_(session.username,'DELETE','Journals',id,'Menghapus jurnal mengajar');
+  return {ok:true,id:id};
+}
+
+function journalById_(id) {
+  const rows=readSheetObjects_('Journals');
+  const row=rows.find(x=>String(x.id)===String(id));
+  if (!row) throw new Error('Jurnal tidak ditemukan.');
+  return row;
+}
+
 function setupDatabase() {
   if (CONFIG.SPREADSHEET_ID === 'PASTE_SPREADSHEET_ID_HERE') {
     throw new Error('Isi CONFIG.SPREADSHEET_ID terlebih dahulu.');
@@ -227,7 +307,7 @@ function saveAll_(token, rawData) {
   const data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
   const map = {
     teachers:'Teachers',students:'Students',classes:'Classes',
-    journals:'Journals',attendance:'Attendance',plans:'Plans',schedules:'Schedules'
+    attendance:'Attendance',plans:'Plans',schedules:'Schedules'
   };
   Object.keys(map).forEach(key => {
     if (Array.isArray(data[key])) replaceCollection_(map[key],data[key]);
