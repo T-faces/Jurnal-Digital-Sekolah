@@ -75,20 +75,95 @@ function generateJournalAI_(token, context) {
   if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(session.role)) throw new Error('Akses ditolak.');
   const key=PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) throw new Error('GEMINI_API_KEY belum dikonfigurasi di Script Properties Apps Script.');
-  const model=PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || 'gemini-2.5-flash';
+
+  const configuredModel=String(PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || '').trim();
   const prompt='Anda adalah asisten guru Indonesia. Buat isi jurnal mengajar yang praktis, formal, singkat, sesuai Kurikulum Merdeka/Deep Learning bila relevan. Data: '+JSON.stringify(context)+'\\nKembalikan HANYA JSON valid dengan tiga properti: objective, activities, reflection. objective berisi 1-3 tujuan pembelajaran terukur. activities berisi langkah pendahuluan, inti, penutup dalam paragraf ringkas. reflection berisi hasil/refleksi dan tindak lanjut. Jangan gunakan markdown.';
-  const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(key);
-  const payload={contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.35,responseMimeType:'application/json'}};
-  const res=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',payload:JSON.stringify(payload),muteHttpExceptions:true});
-  const code=res.getResponseCode(), body=res.getContentText();
-  if(code<200 || code>=300) throw new Error('AI gagal ('+code+'). Periksa GEMINI_API_KEY/GEMINI_MODEL.');
-  let parsed; try { parsed=JSON.parse(body); } catch(e){ throw new Error('Respons AI tidak valid.'); }
-  const text=parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts && parsed.candidates[0].content.parts[0] && parsed.candidates[0].content.parts[0].text;
-  if(!text) throw new Error('AI tidak menghasilkan konten.');
-  let result; try { result=JSON.parse(text); } catch(e){ throw new Error('Format hasil AI tidak valid.'); }
-  audit_(session.username,'AI_GENERATE','Journals','', 'Generate tujuan, kegiatan, refleksi');
-  return {ok:true,result:{objective:String(result.objective||''),activities:String(result.activities||''),reflection:String(result.reflection||'')}};
+
+  const models=listGeminiModels_(key);
+  const candidates=[];
+  if (configuredModel) candidates.push(normalizeGeminiModel_(configuredModel));
+  ['gemini-3.6-flash','gemini-3.5-flash','gemini-3-flash','gemini-2.5-flash','gemini-2.5-flash-lite']
+    .forEach(m=>{ if (candidates.indexOf(m)<0) candidates.push(m); });
+  models.forEach(m=>{ if (candidates.indexOf(m)<0) candidates.push(m); });
+
+  let lastError='';
+  for (let i=0;i<candidates.length;i++) {
+    const model=candidates[i];
+    if (models.length && model===normalizeGeminiModel_(configuredModel) && models.indexOf(model)<0) {
+      lastError='Model GEMINI_MODEL "'+model+'" tidak tersedia atau tidak mendukung generateContent.';
+      continue;
+    }
+    if (models.length && models.indexOf(model)<0) continue;
+    const result=callGeminiGenerate_(key,model,prompt);
+    if (result.ok) {
+      audit_(session.username,'AI_GENERATE','Journals','', 'Generate tujuan, kegiatan, refleksi dengan model '+model);
+      return {ok:true,result:{objective:String(result.data.objective||''),activities:String(result.data.activities||''),reflection:String(result.data.reflection||''),model:model}};
+    }
+    lastError=result.error;
+    if (result.code!==404 && result.code!==400) break;
+  }
+  throw new Error(lastError || 'Gemini tidak menemukan model yang dapat digunakan untuk generateContent.');
 }
+
+function normalizeGeminiModel_(model) {
+  return String(model||'').replace(/^models\\//,'').trim();
+}
+
+function listGeminiModels_(key) {
+  const res=UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models',{
+    method:'get',
+    headers:{'x-goog-api-key':key},
+    muteHttpExceptions:true
+  });
+  const code=res.getResponseCode(), body=res.getContentText();
+  if (code<200 || code>=300) {
+    let detail=body;
+    try { const e=JSON.parse(body); detail=e.error && e.error.message ? e.error.message : body; } catch (_) {}
+    throw new Error('Gagal membaca daftar model Gemini ('+code+'): '+String(detail).slice(0,300));
+  }
+  let data;
+  try { data=JSON.parse(body); } catch (_) { throw new Error('Respons daftar model Gemini tidak valid.'); }
+  return (data.models||[])
+    .filter(m=>Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.indexOf('generateContent')>=0)
+    .map(m=>normalizeGeminiModel_(m.name))
+    .filter(Boolean);
+}
+
+function callGeminiGenerate_(key,model,prompt) {
+  const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent';
+  const headers={'x-goog-api-key':key};
+  const payload={contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.35,responseMimeType:'application/json'}};
+
+  let res=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',headers:headers,payload:JSON.stringify(payload),muteHttpExceptions:true});
+  let code=res.getResponseCode(), body=res.getContentText();
+
+  if (code===400) {
+    const retryPayload={contents:payload.contents,generationConfig:{temperature:0.35}};
+    res=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',headers:headers,payload:JSON.stringify(retryPayload),muteHttpExceptions:true});
+    code=res.getResponseCode();
+    body=res.getContentText();
+  }
+
+  if(code<200 || code>=300) {
+    let detail=body;
+    try { const e=JSON.parse(body); detail=e.error && e.error.message ? e.error.message : body; } catch (_) {}
+    return {ok:false,code:code,error:'AI gagal ('+code+') pada model "'+model+'": '+String(detail).slice(0,400)};
+  }
+
+  let parsed;
+  try { parsed=JSON.parse(body); } catch(e){ return {ok:false,code:500,error:'Respons AI tidak valid.'}; }
+  const text=parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts && parsed.candidates[0].content.parts[0] && parsed.candidates[0].content.parts[0].text;
+  if(!text) return {ok:false,code:500,error:'AI tidak menghasilkan konten.'};
+
+  let data;
+  try { data=JSON.parse(text); } catch(e) {
+    const match=String(text).match(/\\{[\\s\\S]*\\}/);
+    if (!match) return {ok:false,code:500,error:'Format hasil AI tidak valid.'};
+    try { data=JSON.parse(match[0]); } catch (_) { return {ok:false,code:500,error:'Format hasil AI tidak valid.'}; }
+  }
+  return {ok:true,data:data};
+}
+
 function setupDatabase() {
   if (CONFIG.SPREADSHEET_ID === 'PASTE_SPREADSHEET_ID_HERE') {
     throw new Error('Isi CONFIG.SPREADSHEET_ID terlebih dahulu.');
