@@ -33,7 +33,14 @@ const call=async payload=>{
     const text=await r.text();
     let data;
     try{data=JSON.parse(text)}catch(_){throw new Error("Respons backend tidak valid. Pastikan Web App Apps Script aktif dan aksesnya 'Anyone'.")}
-    if(!r.ok||!data.ok) throw new Error(data.error||("HTTP "+r.status));
+    if(!r.ok||!data.ok){
+      const message=data.error||("HTTP "+r.status);
+      if(/Sesi (tidak ditemukan|berakhir)/i.test(message)){
+        clearSession();
+        if(!document.getElementById("jdsLogin")) overlay();
+      }
+      throw new Error(message);
+    }
     return data;
   }catch(err){
     if(err.name==="AbortError") throw new Error("Backend tidak merespons dalam 20 detik.");
