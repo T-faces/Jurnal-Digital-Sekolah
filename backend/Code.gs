@@ -380,7 +380,9 @@ function samePerson_(a, b) {
   return !!x && !!y && (x===y || x.includes(y) || y.includes(x));
 }
 function assignedClasses_(session) {
-  return readSheetObjects_('Classes').filter(c=>samePerson_(c.teacher,session.name)).map(c=>String(c.name||'')).filter(Boolean);
+  const fromClasses=readSheetObjects_('Classes').filter(c=>samePerson_(c.teacher,session.name)).map(c=>String(c.name||''));
+  const fromSchedules=readSheetObjects_('Schedules').filter(s=>samePerson_(s.teacher,session.name)).map(s=>String(s.className||''));
+  return Array.from(new Set(fromClasses.concat(fromSchedules).filter(Boolean)));
 }
 function filterDatabaseForRole_(data, session) {
   const role=normalizeRole_(session.role);
