@@ -67,6 +67,8 @@ function handleAction_(p) {
   if (action === 'bootstrap') return bootstrap_(String(p.token||''));
   if (action === 'saveall') return saveAll_(String(p.token||''), p.data);
   if (action === 'saveschoolsettings') return saveSchoolSettings_(String(p.token||''), p.data || {});
+  if (action === 'saverecord') return saveRecord_(String(p.token||''), String(p.collection||''), p.data || {});
+  if (action === 'deleterecord') return deleteRecord_(String(p.token||''), String(p.collection||''), String(p.id||''));
   if (action === 'changepassword') return changePassword_(String(p.token||''),String(p.currentHash||''),String(p.newHash||''));
   if (action === 'generatejournalai') return generateJournalAI_(String(p.token||''), p.context || {});
   if (action === 'listjournals') return listJournals_(String(p.token||''));
@@ -369,6 +371,65 @@ function normalizeRole_(role) {
   if (value === 'kepala sekolah' || value === 'kepala_sekolah') return 'kepala_sekolah';
   if (value === 'wali kelas' || value === 'wali_kelas' || value === 'walikelas') return 'wali_kelas';
   return value;
+}
+
+function collectionPermission_(role, collection) {
+  const matrix = {
+    admin: ['teachers','students','classes','attendance','plans','schedules'],
+    kepala_sekolah: ['teachers','students','classes','attendance','plans','schedules'],
+    guru: ['attendance','plans','schedules'],
+    wali_kelas: ['attendance','students','classes','schedules']
+  };
+  return (matrix[normalizeRole_(role)] || []).includes(collection);
+}
+
+function saveRecord_(token, collection, rawData) {
+  const session = requireSession_(token);
+  const sheetMap = {teachers:'Teachers',students:'Students',classes:'Classes',attendance:'Attendance',plans:'Plans',schedules:'Schedules'};
+  if (!sheetMap[collection]) throw new Error('Jenis data tidak didukung.');
+  if (!collectionPermission_(session.role, collection)) throw new Error('Akses ditolak untuk menyimpan '+collection+'.');
+  const data = typeof rawData === 'string' ? JSON.parse(rawData) : (rawData || {});
+  const sheetName = sheetMap[collection], sh = sheet_(sheetName);
+  const headers = SHEETS[sheetName];
+  const idIndex = headers.indexOf('id');
+  if (idIndex < 0) throw new Error('Skema ID belum tersedia untuk '+collection+'.');
+  const values = sh.getDataRange().getValues();
+  let rowNumber = -1;
+  if (data.id !== undefined && data.id !== null && String(data.id) !== '') {
+    for (let i=1;i<values.length;i++) if (String(values[i][idIndex]) === String(data.id)) { rowNumber=i+1; break; }
+  }
+  const wasUpdate = rowNumber > 0;
+  const now = new Date();
+  const record = {};
+  headers.forEach(h => {
+    if (h === 'id') record[h] = rowNumber > 0 ? data.id : Utilities.getUuid();
+    else if (h === 'createdAt') record[h] = (rowNumber > 0 && data[h]) || data[h] || now;
+    else if (h === 'updatedAt') record[h] = now;
+    else record[h] = data[h] == null ? '' : data[h];
+  });
+  const row = headers.map(h => record[h]);
+  if (rowNumber > 0) sh.getRange(rowNumber,1,1,headers.length).setValues([row]);
+  else { sh.appendRow(row); rowNumber=sh.getLastRow(); }
+  audit_(session.username, wasUpdate ? 'UPDATE' : 'CREATE', sheetName, record.id, 'CRUD '+collection);
+  return {ok:true,data:record,message:'Data berhasil disimpan ke Google Sheets.'};
+}
+
+function deleteRecord_(token, collection, id) {
+  const session = requireSession_(token);
+  const sheetMap = {teachers:'Teachers',students:'Students',classes:'Classes',attendance:'Attendance',plans:'Plans',schedules:'Schedules'};
+  if (!sheetMap[collection]) throw new Error('Jenis data tidak didukung.');
+  if (!collectionPermission_(session.role, collection)) throw new Error('Akses ditolak untuk menghapus '+collection+'.');
+  if (!id) throw new Error('ID data tidak valid.');
+  const sheetName=sheetMap[collection], sh=sheet_(sheetName), values=sh.getDataRange().getValues();
+  const idx=values[0].indexOf('id');
+  for(let i=1;i<values.length;i++){
+    if(String(values[i][idx])===String(id)){
+      sh.deleteRow(i+1);
+      audit_(session.username,'DELETE',sheetName,id,'CRUD '+collection);
+      return {ok:true,id:id,message:'Data berhasil dihapus dari Google Sheets.'};
+    }
+  }
+  throw new Error('Data tidak ditemukan atau sudah dihapus oleh pengguna lain.');
 }
 
 function saveSchoolSettings_(token, rawData) {
