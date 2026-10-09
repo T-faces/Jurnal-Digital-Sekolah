@@ -85,6 +85,7 @@ if(configured()){
   let hydrating=true,syncTimer=0;
   window.JDS_AUTH={
     generateJournalAI:async context=>call({action:"generateJournalAI",token:getToken(),context}),
+    saveSchoolSettings:async data=>call({action:"saveSchoolSettings",token:getToken(),data}),
     listJournals:async()=>call({action:"listJournals",token:getToken()}),
     createJournal:async data=>call({action:"createJournal",token:getToken(),data}),
     updateJournal:async(id,data)=>call({action:"updateJournal",token:getToken(),id,data}),
