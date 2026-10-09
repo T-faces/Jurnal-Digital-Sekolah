@@ -58,18 +58,20 @@ function doPost(e) {
 }
 
 function handleAction_(p) {
-  const action = String(p.action || '');
+  // Normalize action names so older frontend/deployment variants remain compatible.
+  const rawAction = String(p.action || '').trim();
+  const action = rawAction.toLowerCase();
   if (action === 'ping') return {ok:true,app:CONFIG.APP_NAME,time:new Date().toISOString()};
   if (action === 'login') return login_(String(p.username||''),String(p.passwordHash||''));
   if (action === 'logout') return logout_(String(p.token||''));
   if (action === 'bootstrap') return bootstrap_(String(p.token||''));
-  if (action === 'saveAll') return saveAll_(String(p.token||''), p.data);
-  if (action === 'changePassword') return changePassword_(String(p.token||''),String(p.currentHash||''),String(p.newHash||''));
-  if (action === 'generateJournalAI') return generateJournalAI_(String(p.token||''), p.context || {});
-  if (action === 'listJournals') return listJournals_(String(p.token||''));
-  if (action === 'createJournal') return createJournal_(String(p.token||''), p.data || {});
-  if (action === 'updateJournal') return updateJournal_(String(p.token||''), String(p.id||''), p.data || {});
-  if (action === 'deleteJournal') return deleteJournal_(String(p.token||''), String(p.id||''));
+  if (action === 'saveall') return saveAll_(String(p.token||''), p.data);
+  if (action === 'changepassword') return changePassword_(String(p.token||''),String(p.currentHash||''),String(p.newHash||''));
+  if (action === 'generatejournalai') return generateJournalAI_(String(p.token||''), p.context || {});
+  if (action === 'listjournals') return listJournals_(String(p.token||''));
+  if (action === 'createjournal') return createJournal_(String(p.token||''), p.data || {});
+  if (action === 'updatejournal') return updateJournal_(String(p.token||''), String(p.id||''), p.data || {});
+  if (action === 'deletejournal') return deleteJournal_(String(p.token||''), String(p.id||''));
   if (action === 'health') return health_();
   throw new Error('Aksi tidak dikenal: ' + action);
 }
