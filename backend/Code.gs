@@ -227,7 +227,7 @@ function listJournals_(token) {
 
 function createJournal_(token, rawData) {
   const session=requireSession_(token);
-  if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(session.role)) throw new Error('Akses ditolak.');
+  if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(normalizeRole_(session.role))) throw new Error('Akses ditolak.');
   const data=journalPayload_(rawData);
   if (['guru','wali_kelas'].includes(normalizeRole_(session.role))) data.teacher=session.name;
   if (normalizeRole_(session.role)==='wali_kelas' && !assignedClasses_(session).map(x=>x.toLowerCase()).includes(String(data.className||'').toLowerCase())) throw new Error('Anda hanya dapat membuat jurnal untuk kelas yang menjadi tanggung jawab Anda.');
@@ -394,7 +394,7 @@ function filterDatabaseForRole_(data, session) {
   data.students=data.students.filter(s=>classSet.has(String(s.className||'').toLowerCase()));
   data.journals=data.journals.filter(j=>role==='guru'?samePerson_(j.teacher,session.name):classSet.has(String(j.className||'').toLowerCase()));
   data.attendance=data.attendance.filter(a=>role==='guru'?samePerson_(a.teacher,session.name):classSet.has(String(a.className||'').toLowerCase()));
-  data.plans=data.plans.filter(p=>role==='guru'?true:classSet.has(String(p.className||'').toLowerCase()));
+  data.plans=data.plans.filter(p=>classSet.has(String(p.className||'').toLowerCase()));
   data.schedules=data.schedules.filter(s=>role==='guru'?samePerson_(s.teacher,session.name):classSet.has(String(s.className||'').toLowerCase()));
   return data;
 }
@@ -459,6 +459,11 @@ function saveRecord_(token, collection, rawData) {
   let rowNumber = -1;
   if (data.id !== undefined && data.id !== null && String(data.id) !== '') {
     for (let i=1;i<values.length;i++) if (String(values[i][idIndex]) === String(data.id)) { rowNumber=i+1; break; }
+  }
+  if (rowNumber > 0) {
+    const existing = {};
+    headers.forEach((h,i)=>existing[h]=values[rowNumber-1][i]);
+    assertRecordScope_(session, collection, existing);
   }
   const wasUpdate = rowNumber > 0;
   const now = new Date();
