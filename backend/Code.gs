@@ -230,7 +230,7 @@ function createJournal_(token, rawData) {
   if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(normalizeRole_(session.role))) throw new Error('Akses ditolak.');
   const data=journalPayload_(rawData);
   if (['guru','wali_kelas'].includes(normalizeRole_(session.role))) data.teacher=session.name;
-  if (normalizeRole_(session.role)==='wali_kelas' && !assignedClasses_(session).map(x=>x.toLowerCase()).includes(String(data.className||'').toLowerCase())) throw new Error('Anda hanya dapat membuat jurnal untuk kelas yang menjadi tanggung jawab Anda.');
+  if (['guru','wali_kelas'].includes(normalizeRole_(session.role)) && !assignedClasses_(session).map(x=>x.toLowerCase()).includes(String(data.className||'').toLowerCase())) throw new Error('Anda hanya dapat membuat jurnal untuk kelas yang ditugaskan kepada akun Anda.');
   if (!data.date || !data.teacher || !data.className || !data.subject || !data.topic) {
     throw new Error('Tanggal, guru, kelas, mata pelajaran, dan materi wajib diisi.');
   }
@@ -262,7 +262,7 @@ function updateJournal_(token,id,rawData) {
   assertJournalScope_(session, old);
   const data=journalPayload_(rawData);
   if (['guru','wali_kelas'].includes(normalizeRole_(session.role))) data.teacher=session.name;
-  if (normalizeRole_(session.role)==='wali_kelas' && !assignedClasses_(session).map(x=>x.toLowerCase()).includes(String(data.className||old.className||'').toLowerCase())) throw new Error('Anda hanya dapat mengubah jurnal untuk kelas yang menjadi tanggung jawab Anda.');
+  if (['guru','wali_kelas'].includes(normalizeRole_(session.role)) && !assignedClasses_(session).map(x=>x.toLowerCase()).includes(String(data.className||old.className||'').toLowerCase())) throw new Error('Anda hanya dapat mengubah jurnal untuk kelas yang ditugaskan kepada akun Anda.');
   const row=headers.map(h=>{
     if (h==='id') return old.id;
     if (h==='updatedAt') return new Date();
