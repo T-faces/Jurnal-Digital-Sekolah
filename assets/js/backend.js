@@ -82,25 +82,18 @@ const hydrate=async()=>{
   }
 };
 if(configured()){
-  let hydrating=true,syncTimer=0;
+  let hydrating=true;
   window.JDS_AUTH={
     generateJournalAI:async context=>call({action:"generateJournalAI",token:getToken(),context}),
     saveSchoolSettings:async data=>call({action:"saveSchoolSettings",token:getToken(),data}),
+    saveRecord:async(collection,data)=>call({action:"saveRecord",token:getToken(),collection,data}),
+    deleteRecord:async(collection,id)=>call({action:"deleteRecord",token:getToken(),collection,id}),
     listJournals:async()=>call({action:"listJournals",token:getToken()}),
     createJournal:async data=>call({action:"createJournal",token:getToken(),data}),
     updateJournal:async(id,data)=>call({action:"updateJournal",token:getToken(),id,data}),
     deleteJournal:async id=>call({action:"deleteJournal",token:getToken(),id}),
     logout:async()=>{const token=getToken();try{if(token)await call({action:"logout",token})}catch(_){}clearSession();window.dispatchEvent(new Event("jds:logout"));location.reload()}};
   window.addEventListener("jds:logout",()=>clearSession());
-  const originalSet=Storage.prototype.setItem;
-  const originalRemove=Storage.prototype.removeItem;
-  Storage.prototype.setItem=function(key,value){
-    originalSet.call(this,key,value);
-    if(this===localStorage&&key==="jds_demo_v1"&&!hydrating&&getToken()){
-      clearTimeout(syncTimer);
-      syncTimer=setTimeout(async()=>{try{await call({action:"saveAll",token:getToken(),data:JSON.parse(value)})}catch(e){console.warn("Sinkronisasi backend:",e.message)}},500);
-    }
-  };
   document.addEventListener("DOMContentLoaded",async()=>{await hydrate();hydrating=false});
 }else{
   document.addEventListener("DOMContentLoaded",()=>{const n=document.createElement("div");n.className="jds-demo-badge";n.textContent="MODE DEMO • Backend belum dikonfigurasi";document.body.appendChild(n)});
