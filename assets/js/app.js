@@ -23,7 +23,7 @@ guru:["dashboard","jurnal","absensi","jadwal","perangkat","laporan"],
 wali_kelas:["dashboard","jurnal","absensi","jadwal","perangkat","siswa","kelas","laporan"]
 };
 function canAccessPage(p){const role=normalizeRole(currentUser()?.role||"admin");return (pageAccess[role]||pageAccess.guru).includes(p)}
-function canWriteCollection(c){const role=normalizeRole(currentUser()?.role||"admin");const matrix={admin:["journals","attendance","schedules","plans","teachers","students","classes"],kepala_sekolah:["journals","attendance","schedules","plans","teachers","students","classes"],guru:["journals","attendance","schedules","plans"],wali_kelas:["journals","attendance","schedules","students","classes"]};return (matrix[role]||[]).includes(c)}
+function canWriteCollection(c){const role=normalizeRole(currentUser()?.role||"admin");const matrix={admin:["journals","attendance","schedules","plans","teachers","students","classes"],kepala_sekolah:["journals","attendance","schedules","plans","teachers","students","classes"],guru:["journals","attendance","schedules","plans"],wali_kelas:["journals","attendance","schedules","students"]};return (matrix[role]||[]).includes(c)}
 function applyRoleUI(){
  const role=normalizeRole(currentUser()?.role||"admin");
  $$("[data-page]").forEach(n=>{n.hidden=!canAccessPage(n.dataset.page)});
@@ -41,7 +41,7 @@ function dashboard(){
 const role=normalizeRole(currentUser()?.role||"admin");
 const todayJ=db.journals.filter(x=>x.date===todayISO()).length;
 const ownName=String(currentUser()?.name||"").toLowerCase();
-const ownJournals=role==="admin"||role==="kepala_sekolah"?db.journals:db.journals.filter(j=>String(j.teacher||"").toLowerCase().includes(ownName)||String(j.teacher||"").toLowerCase()===ownName);
+const ownJournals=db.journals;
 if(role==="kepala_sekolah"){
  const todayAttendance=db.attendance.filter(x=>x.date===todayISO()).length;
  const recent=[...db.journals].sort((a,b)=>(b.created||"").localeCompare(a.created||"")).slice(0,5);
@@ -50,7 +50,7 @@ if(role==="kepala_sekolah"){
 }
 if(role==="guru"||role==="wali_kelas"){
  const mine=ownJournals;
- const scopedAttendance=role==="wali_kelas"?db.attendance:db.attendance.filter(x=>String(x.teacher||"").toLowerCase().includes(ownName));
+ const scopedAttendance=db.attendance;
  const label=role==="wali_kelas"?"Dashboard Wali Kelas":"Dashboard Guru";
  const recent=mine.slice().sort((a,b)=>(b.created||"").localeCompare(a.created||"")).slice(0,5);
  const recentHtml=recent.length?recent.map(j=>`<div class="activity"><div class="activity-icon">▤</div><div><b>${esc(j.subject)} · ${esc(j.className)}</b><p>${esc(j.topic||"Materi belum diisi")}</p></div><time>${esc(j.date)}</time></div>`).join(""):`<div class="empty-state"><div class="empty-icon">▤</div><b>Belum ada jurnal</b>Mulai catat kegiatan pembelajaran Anda.</div>`;
