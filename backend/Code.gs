@@ -217,14 +217,20 @@ function journalPayload_(data) {
 }
 
 function listJournals_(token) {
-  requireSession_(token);
-  return {ok:true,data:readSheetObjects_('Journals')};
+  const session=requireSession_(token);
+  const rows=readSheetObjects_('Journals');
+  const role=normalizeRole_(session.role);
+  const classes=assignedClasses_(session).map(x=>x.toLowerCase());
+  const data=role==='admin'||role==='kepala_sekolah'?rows:role==='guru'?rows.filter(j=>samePerson_(j.teacher,session.name)):rows.filter(j=>classes.includes(String(j.className||'').toLowerCase()));
+  return {ok:true,data:data};
 }
 
 function createJournal_(token, rawData) {
   const session=requireSession_(token);
   if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(session.role)) throw new Error('Akses ditolak.');
   const data=journalPayload_(rawData);
+  if (['guru','wali_kelas'].includes(normalizeRole_(session.role))) data.teacher=session.name;
+  if (normalizeRole_(session.role)==='wali_kelas' && !assignedClasses_(session).map(x=>x.toLowerCase()).includes(String(data.className||'').toLowerCase())) throw new Error('Anda hanya dapat membuat jurnal untuk kelas yang menjadi tanggung jawab Anda.');
   if (!data.date || !data.teacher || !data.className || !data.subject || !data.topic) {
     throw new Error('Tanggal, guru, kelas, mata pelajaran, dan materi wajib diisi.');
   }
@@ -253,7 +259,10 @@ function updateJournal_(token,id,rawData) {
   for (let i=1;i<values.length;i++) if (String(values[i][idx])===String(id)) { rowNumber=i+1; break; }
   if (rowNumber<0) throw new Error('Jurnal tidak ditemukan.');
   const old={}; headers.forEach((h,i)=>old[h]=values[rowNumber-1][i]);
+  assertJournalScope_(session, old);
   const data=journalPayload_(rawData);
+  if (['guru','wali_kelas'].includes(normalizeRole_(session.role))) data.teacher=session.name;
+  if (normalizeRole_(session.role)==='wali_kelas' && !assignedClasses_(session).map(x=>x.toLowerCase()).includes(String(data.className||old.className||'').toLowerCase())) throw new Error('Anda hanya dapat mengubah jurnal untuk kelas yang menjadi tanggung jawab Anda.');
   const row=headers.map(h=>{
     if (h==='id') return old.id;
     if (h==='updatedAt') return new Date();
@@ -273,6 +282,8 @@ function deleteJournal_(token,id) {
   let rowNumber=-1;
   for (let i=1;i<values.length;i++) if (String(values[i][idx])===String(id)) { rowNumber=i+1; break; }
   if (rowNumber<0) throw new Error('Jurnal tidak ditemukan.');
+  const old={}; values[0].forEach((h,i)=>old[h]=values[rowNumber-1][i]);
+  assertJournalScope_(session, old);
   sh.deleteRow(rowNumber);
   audit_(session.username,'DELETE','Journals',id,'Menghapus jurnal mengajar');
   return {ok:true,id:id};
@@ -357,8 +368,55 @@ function logout_(token) {
 
 function bootstrap_(token) {
   const session = requireSession_(token);
-  const data = readDatabase_();
+  const data = filterDatabaseForRole_(readDatabase_(), session);
   return {ok:true,user:session,data:data};
+}
+
+function canonicalPerson_(value) {
+  return String(value || '').toLowerCase().trim().split(',')[0].replace(/\s+/g,' ');
+}
+function samePerson_(a, b) {
+  const x=canonicalPerson_(a), y=canonicalPerson_(b);
+  return !!x && !!y && (x===y || x.includes(y) || y.includes(x));
+}
+function assignedClasses_(session) {
+  return readSheetObjects_('Classes').filter(c=>samePerson_(c.teacher,session.name)).map(c=>String(c.name||'')).filter(Boolean);
+}
+function filterDatabaseForRole_(data, session) {
+  const role=normalizeRole_(session.role);
+  if (role==='admin' || role==='kepala_sekolah') return data;
+  const classes=assignedClasses_(session);
+  const classSet=new Set(classes.map(x=>x.toLowerCase()));
+  data.teachers=data.teachers.filter(t=>samePerson_(t.name,session.name));
+  data.classes=data.classes.filter(c=>classSet.has(String(c.name||'').toLowerCase()));
+  data.students=data.students.filter(s=>classSet.has(String(s.className||'').toLowerCase()));
+  data.journals=data.journals.filter(j=>role==='guru'?samePerson_(j.teacher,session.name):classSet.has(String(j.className||'').toLowerCase()));
+  data.attendance=data.attendance.filter(a=>role==='guru'?samePerson_(a.teacher,session.name):classSet.has(String(a.className||'').toLowerCase()));
+  data.plans=data.plans.filter(p=>role==='guru'?true:classSet.has(String(p.className||'').toLowerCase()));
+  data.schedules=data.schedules.filter(s=>role==='guru'?samePerson_(s.teacher,session.name):classSet.has(String(s.className||'').toLowerCase()));
+  return data;
+}
+function assertRecordScope_(session, collection, data) {
+  const role=normalizeRole_(session.role);
+  if (role==='admin' || role==='kepala_sekolah') return;
+  if (role==='guru') {
+    if (collection==='attendance' && !samePerson_(data.teacher,session.name)) throw new Error('Guru hanya dapat mengubah absensi miliknya sendiri.');
+    if (collection==='schedules' && !samePerson_(data.teacher,session.name)) throw new Error('Guru hanya dapat mengubah jadwal miliknya sendiri.');
+    return;
+  }
+  if (role==='wali_kelas') {
+    const classes=assignedClasses_(session).map(x=>x.toLowerCase());
+    if (['students','classes','attendance','schedules','plans'].includes(collection) && !classes.includes(String(data.className||data.name||'').toLowerCase())) {
+      throw new Error('Akses dibatasi pada kelas yang menjadi tanggung jawab Anda.');
+    }
+  }
+}
+function assertJournalScope_(session, journal) {
+  const role=normalizeRole_(session.role);
+  if (role==='admin' || role==='kepala_sekolah') return;
+  if (role==='guru' && samePerson_(journal.teacher,session.name)) return;
+  if (role==='wali_kelas' && assignedClasses_(session).map(x=>x.toLowerCase()).includes(String(journal.className||'').toLowerCase())) return;
+  throw new Error('Akses ditolak: jurnal ini bukan milik Anda atau bukan kelas tanggung jawab Anda.');
 }
 
 function saveAll_(token, rawData) {
@@ -369,7 +427,7 @@ function saveAll_(token, rawData) {
     admin: ['teachers','students','classes','attendance','plans','schedules'],
     kepala_sekolah: ['teachers','students','classes','attendance','plans','schedules'],
     guru: ['attendance','plans','schedules'],
-    wali_kelas: ['attendance','students','classes','schedules']
+    wali_kelas: ['attendance','students','schedules']
   };
   const allowed = permissions[role] || [];
   const map = {teachers:'Teachers',students:'Students',classes:'Classes',attendance:'Attendance',plans:'Plans',schedules:'Schedules'};
@@ -408,6 +466,7 @@ function saveRecord_(token, collection, rawData) {
   if (!sheetMap[collection]) throw new Error('Jenis data tidak didukung.');
   if (!collectionPermission_(session.role, collection)) throw new Error('Akses ditolak untuk menyimpan '+collection+'.');
   const data = typeof rawData === 'string' ? JSON.parse(rawData) : (rawData || {});
+  assertRecordScope_(session, collection, data);
   const sheetName = sheetMap[collection], sh = sheet_(sheetName);
   const headers = SHEETS[sheetName];
   const idIndex = headers.indexOf('id');
