@@ -298,6 +298,25 @@ function setupDatabase() {
     else sh.getRange(1,1,1,headers.length).setValues([headers]);
     sh.setFrozenRows(1);
   });
+  // Backfill stable IDs for legacy records so edit/delete works across devices.
+  Object.keys(SHEETS).forEach(name => {
+    const headers = SHEETS[name];
+    const idIndex = headers.indexOf('id');
+    if (idIndex < 0) return;
+    const sh = ss.getSheetByName(name);
+    const lastRow = sh.getLastRow();
+    if (lastRow < 2) return;
+    const ids = sh.getRange(2, idIndex + 1, lastRow - 1, 1).getValues();
+    let changed = false;
+    ids.forEach((row, i) => {
+      const wholeRow = sh.getRange(i + 2, 1, 1, headers.length).getValues()[0];
+      if (wholeRow.some(v => v !== '') && !row[0]) {
+        row[0] = Utilities.getUuid();
+        changed = true;
+      }
+    });
+    if (changed) sh.getRange(2, idIndex + 1, ids.length, 1).setValues(ids);
+  });
   const users = sheet_('Users');
   if (users.getLastRow() === 1) {
     users.appendRow([
