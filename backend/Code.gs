@@ -66,6 +66,7 @@ function handleAction_(p) {
   if (action === 'logout') return logout_(String(p.token||''));
   if (action === 'bootstrap') return bootstrap_(String(p.token||''));
   if (action === 'saveall') return saveAll_(String(p.token||''), p.data);
+  if (action === 'saveschoolsettings') return saveSchoolSettings_(String(p.token||''), p.data || {});
   if (action === 'changepassword') return changePassword_(String(p.token||''),String(p.currentHash||''),String(p.newHash||''));
   if (action === 'generatejournalai') return generateJournalAI_(String(p.token||''), p.context || {});
   if (action === 'listjournals') return listJournals_(String(p.token||''));
@@ -363,6 +364,37 @@ function saveAll_(token, rawData) {
   }
   audit_(session.username,'SAVE_ALL','*','', 'Sinkronisasi data');
   return {ok:true,message:'Data tersimpan.',data:readDatabase_()};
+}
+
+function saveSchoolSettings_(token, rawData) {
+  const session = requireSession_(token);
+  if (!['admin','kepala_sekolah'].includes(session.role)) throw new Error('Hanya admin atau kepala sekolah yang dapat mengubah pengaturan sekolah.');
+  const data = typeof rawData === 'string' ? JSON.parse(rawData) : (rawData || {});
+  const fields = {
+    schoolName: String(data.name || '').trim(),
+    year: String(data.year || '').trim(),
+    address: String(data.address || '').trim(),
+    principal: String(data.principal || '').trim()
+  };
+  if (!fields.schoolName) throw new Error('Nama sekolah wajib diisi.');
+  if (!fields.year) throw new Error('Tahun pelajaran wajib diisi.');
+
+  const sh = sheet_('Settings');
+  const lastRow = sh.getLastRow();
+  const existing = lastRow > 1 ? sh.getRange(2, 1, lastRow - 1, 3).getValues() : [];
+  const rowByKey = {};
+  existing.forEach((row, i) => { rowByKey[String(row[0])] = i + 2; });
+  const now = new Date();
+  Object.keys(fields).forEach(key => {
+    const row = rowByKey[key];
+    if (row) {
+      sh.getRange(row, 2, 1, 2).setValues([[fields[key], now]]);
+    } else {
+      sh.appendRow([key, fields[key], now]);
+    }
+  });
+  audit_(session.username, 'SAVE_SCHOOL_SETTINGS', 'Settings', '', 'Pengaturan identitas sekolah diperbarui');
+  return {ok:true,message:'Pengaturan sekolah berhasil disimpan ke Google Sheets.',data:readDatabase_().school};
 }
 
 function changePassword_(token,currentHash,newHash) {
