@@ -145,10 +145,27 @@ async function handleSubmit(e){
   }
 
   if(!canWriteCollection(cfg.collection)){toast("Akun Anda tidak memiliki izin mengubah data ini.");return;}
-  let arr=db[cfg.collection];
-  if(editing){Object.assign(arr.find(x=>x.id===editing.id),obj)}
-  else{obj.id=nextId(arr);if(cfg.collection==="journals")obj.created=new Date().toISOString();arr.push(obj)}
-  save();closeModal();render();toast(editing?"Perubahan berhasil disimpan.":"Data berhasil ditambahkan.");
+  if(!canWriteCollection(cfg.collection)){toast("Akun Anda tidak memiliki izin mengubah data ini.");return;}
+  const isEdit=!!editing;
+  const btn=e.target.querySelector('button[type="submit"]');
+  const oldLabel=btn?.textContent;
+  if(btn){btn.disabled=true;btn.textContent="Menyimpan...";}
+  try{
+    let saved=obj;
+    if(window.JDS_AUTH?.saveRecord){
+      const result=await window.JDS_AUTH.saveRecord(cfg.collection,{...(isEdit?editing:obj),...obj});
+      saved=result.data||obj;
+    }else{
+      saved={...obj,id:isEdit?editing.id:nextId(db[cfg.collection])};
+    }
+    const arr=db[cfg.collection];
+    if(isEdit){const idx=arr.findIndex(x=>String(x.id)===String(editing.id));if(idx>=0)arr[idx]=saved;else arr.push(saved)}
+    else arr.push(saved);
+    save();closeModal();render();toast(isEdit?"Perubahan berhasil disimpan ke Google Sheets.":"Data berhasil ditambahkan ke Google Sheets.");
+  }catch(err){
+    toast("Gagal menyimpan: "+(err.message||"Periksa koneksi backend."));
+    if(btn){btn.disabled=false;btn.textContent=oldLabel||"Simpan Data";}
+  }
 }
 document.addEventListener("click",e=>{let nav=e.target.closest("[data-page]");if(nav){setPage(nav.dataset.page);return}let act=e.target.closest("[data-action]")?.dataset.action;if(act){if(act==="add-journal")openModal(act);else if(configs[act])openModal(act);else if(act==="export")exportCSV(({jurnal:"journals",absensi:"attendance",guru:"teachers",siswa:"students",kelas:"classes",perangkat:"plans"})[page]||"journals");else if(act==="backup")downloadJSON();else if(act==="reset"){if(confirm("Reset seluruh data demo ke data awal? Perubahan lokal akan hilang.")){db=structuredClone(initial);save();render();toast("Data demo telah direset.")}}return}let ex=e.target.closest("[data-export]");if(ex){exportCSV(ex.dataset.export);return}let edit=e.target.closest("[data-edit]");if(edit){let cfgKey=Object.keys(configs).find(k=>configs[k].collection===edit.dataset.edit);if(cfgKey)openModal(cfgKey,db[edit.dataset.edit].find(x=>String(x.id)===edit.dataset.id));return}let del=e.target.closest("[data-delete]");if(del){
   if(confirm("Hapus data ini? Tindakan ini tidak dapat dibatalkan.")){
@@ -165,10 +182,16 @@ document.addEventListener("click",e=>{let nav=e.target.closest("[data-page]");if
         toast(err.message||"Gagal menghapus jurnal.");
       });
     }else{
-      let arr=db[collection];
-      if(collection==="schedules")arr.splice(Number(id),1);
-      else db[collection]=arr.filter(x=>String(x.id)!==String(id));
-      save();render();toast("Data berhasil dihapus.");
+      if(!canWriteCollection(collection)){toast("Akun Anda tidak memiliki izin menghapus data ini.");return;}
+      const btn=del;btn.disabled=true;btn.textContent="Menghapus...";
+      (async()=>{
+        try{
+          if(window.JDS_AUTH?.deleteRecord) await window.JDS_AUTH.deleteRecord(collection,id);
+          if(collection==="schedules") db.schedules=db.schedules.filter((x,i)=>String(x.id||i)!==String(id));
+          else db[collection]=db[collection].filter(x=>String(x.id)!==String(id));
+          save();render();toast("Data berhasil dihapus dari Google Sheets.");
+        }catch(err){btn.disabled=false;btn.textContent="Hapus";toast("Gagal menghapus: "+(err.message||"Periksa koneksi backend."))}
+      })();
     }
   }
   return;
