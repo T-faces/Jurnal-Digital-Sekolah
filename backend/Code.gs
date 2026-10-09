@@ -112,7 +112,7 @@ function generateJournalAI_(token, context) {
 }
 
 function normalizeGeminiModel_(model) {
-  return String(model||'').replace(/^models\\//,'').trim();
+  return String(model||'').replace(/^models\//,'').trim();
 }
 
 function listGeminiModels_(key) {
