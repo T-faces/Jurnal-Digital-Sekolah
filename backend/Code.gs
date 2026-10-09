@@ -79,7 +79,7 @@ function handleAction_(p) {
 
 function generateJournalAI_(token, context) {
   const session=requireSession_(token);
-  if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(session.role)) throw new Error('Akses ditolak.');
+  if (!['admin','kepala_sekolah','guru','wali_kelas'].includes(normalizeRole_(session.role))) throw new Error('Akses ditolak.');
   const key=PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) throw new Error('GEMINI_API_KEY belum dikonfigurasi di Script Properties Apps Script.');
 
@@ -342,33 +342,38 @@ function bootstrap_(token) {
 
 function saveAll_(token, rawData) {
   const session = requireSession_(token);
-  if (!['admin','kepala_sekolah','guru'].includes(session.role)) throw new Error('Akses ditolak.');
-  const data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
-  const map = {
-    teachers:'Teachers',students:'Students',classes:'Classes',
-    attendance:'Attendance',plans:'Plans',schedules:'Schedules'
+  const data = typeof rawData === 'string' ? JSON.parse(rawData) : (rawData || {});
+  const role = normalizeRole_(session.role);
+  const permissions = {
+    admin: ['teachers','students','classes','attendance','plans','schedules'],
+    kepala_sekolah: ['teachers','students','classes','attendance','plans','schedules'],
+    guru: ['attendance','plans','schedules'],
+    wali_kelas: ['attendance','students','classes','schedules']
   };
+  const allowed = permissions[role] || [];
+  const map = {teachers:'Teachers',students:'Students',classes:'Classes',attendance:'Attendance',plans:'Plans',schedules:'Schedules'};
+  const changed = [];
   Object.keys(map).forEach(key => {
-    if (Array.isArray(data[key])) replaceCollection_(map[key],data[key]);
+    if (allowed.includes(key) && Array.isArray(data[key])) {
+      replaceCollection_(map[key], data[key]);
+      changed.push(key);
+    }
   });
-  if (data.school) {
-    const s = sheet_('Settings');
-    const values = [
-      ['schoolName',data.school.name || '',new Date()],
-      ['year',data.school.year || '',new Date()],
-      ['address',data.school.address || '',new Date()],
-      ['principal',data.school.principal || '',new Date()]
-    ];
-    clearDataRows_(s);
-    if (values.length) s.getRange(2,1,values.length,3).setValues(values);
-  }
-  audit_(session.username,'SAVE_ALL','*','', 'Sinkronisasi data');
-  return {ok:true,message:'Data tersimpan.',data:readDatabase_()};
+  if (!changed.length) return {ok:true,message:'Tidak ada data yang diizinkan untuk disinkronkan.',data:readDatabase_()};
+  audit_(session.username,'SAVE_ALL',changed.join(','),'','Sinkronisasi CRUD berdasarkan hak akses');
+  return {ok:true,message:'Data berhasil disinkronkan.',changed:changed,data:readDatabase_()};
+}
+
+function normalizeRole_(role) {
+  const value = String(role || '').trim().toLowerCase().replace(/[ -]+/g, '_');
+  if (value === 'kepala sekolah' || value === 'kepala_sekolah') return 'kepala_sekolah';
+  if (value === 'wali kelas' || value === 'wali_kelas' || value === 'walikelas') return 'wali_kelas';
+  return value;
 }
 
 function saveSchoolSettings_(token, rawData) {
   const session = requireSession_(token);
-  if (!['admin','kepala_sekolah'].includes(session.role)) throw new Error('Hanya admin atau kepala sekolah yang dapat mengubah pengaturan sekolah.');
+  if (!['admin','kepala_sekolah'].includes(normalizeRole_(session.role))) throw new Error('Hanya admin atau kepala sekolah yang dapat mengubah pengaturan sekolah.');
   const data = typeof rawData === 'string' ? JSON.parse(rawData) : (rawData || {});
   const fields = {
     schoolName: String(data.name || '').trim(),
