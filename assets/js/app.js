@@ -152,5 +152,6 @@ document.addEventListener("submit",handleSubmit);
 document.addEventListener("input",e=>{if(e.target.id==="searchInput"){let pos=e.target.selectionStart;searchTerm=e.target.value;render();let n=$("#searchInput");n?.focus();n?.setSelectionRange(pos,pos)}});
 $("#modalClose").addEventListener("click",closeModal);$("#modalCancel").addEventListener("click",closeModal);$("#modalBackdrop").addEventListener("click",e=>{if(e.target.id==="modalBackdrop")closeModal()});
 $("#menuToggle").addEventListener("click",()=>$("#sidebar").classList.add("open"));$("#closeSidebar").addEventListener("click",()=>$("#sidebar").classList.remove("open"));$("#profileBtn").addEventListener("click",()=>{const u=currentUser();if(u&&window.JDS_AUTH){if(confirm("Keluar dari akun "+(u.name||u.username)+"?"))window.JDS_AUTH.logout();}else toast("Akun demo: Administrator")});
+window.addEventListener("jds:ready",()=>{try{db=JSON.parse(localStorage.getItem(STORE_KEY))||db}catch(_){}render()});
 render();
 })();
