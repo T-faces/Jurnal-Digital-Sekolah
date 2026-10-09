@@ -404,6 +404,7 @@ function assertRecordScope_(session, collection, data) {
   if (role==='guru') {
     if (collection==='attendance' && !samePerson_(data.teacher,session.name)) throw new Error('Guru hanya dapat mengubah absensi miliknya sendiri.');
     if (collection==='schedules' && !samePerson_(data.teacher,session.name)) throw new Error('Guru hanya dapat mengubah jadwal miliknya sendiri.');
+    if (collection==='plans' && !assignedClasses_(session).map(x=>x.toLowerCase()).includes(String(data.className||'').toLowerCase())) throw new Error('Guru hanya dapat mengubah perangkat ajar untuk kelas yang ditugaskan.');
     return;
   }
   if (role==='wali_kelas') {
@@ -422,27 +423,8 @@ function assertJournalScope_(session, journal) {
 }
 
 function saveAll_(token, rawData) {
-  const session = requireSession_(token);
-  const data = typeof rawData === 'string' ? JSON.parse(rawData) : (rawData || {});
-  const role = normalizeRole_(session.role);
-  const permissions = {
-    admin: ['teachers','students','classes','attendance','plans','schedules'],
-    kepala_sekolah: ['teachers','students','classes','attendance','plans','schedules'],
-    guru: ['attendance','plans','schedules'],
-    wali_kelas: ['attendance','students','schedules']
-  };
-  const allowed = permissions[role] || [];
-  const map = {teachers:'Teachers',students:'Students',classes:'Classes',attendance:'Attendance',plans:'Plans',schedules:'Schedules'};
-  const changed = [];
-  Object.keys(map).forEach(key => {
-    if (allowed.includes(key) && Array.isArray(data[key])) {
-      replaceCollection_(map[key], data[key]);
-      changed.push(key);
-    }
-  });
-  if (!changed.length) return {ok:true,message:'Tidak ada data yang diizinkan untuk disinkronkan.',data:readDatabase_()};
-  audit_(session.username,'SAVE_ALL',changed.join(','),'','Sinkronisasi CRUD berdasarkan hak akses');
-  return {ok:true,message:'Data berhasil disinkronkan.',changed:changed,data:readDatabase_()};
+  requireSession_(token);
+  throw new Error('Sinkronisasi massal dinonaktifkan. Gunakan API CRUD per data agar perubahan pengguna lain tidak tertimpa.');
 }
 
 function normalizeRole_(role) {
@@ -504,6 +486,8 @@ function deleteRecord_(token, collection, id) {
   const idx=values[0].indexOf('id');
   for(let i=1;i<values.length;i++){
     if(String(values[i][idx])===String(id)){
+      const record={}; values[0].forEach((h,j)=>record[h]=values[i][j]);
+      assertRecordScope_(session, collection, record);
       sh.deleteRow(i+1);
       audit_(session.username,'DELETE',sheetName,id,'CRUD '+collection);
       return {ok:true,id:id,message:'Data berhasil dihapus dari Google Sheets.'};
